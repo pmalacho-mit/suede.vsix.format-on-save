@@ -7,7 +7,7 @@ To see the installable source code, please checkout the [release branch](https:/
 ## Installation
 
 ```bash
-bash <(curl -fsSL https://suede.sh/install/release) --repo pmalacho-mit/suede.vsix.format-on-save
+bash <(curl -fsSL https://suede.sh/install/release) --repo pmalacho-mit/suede.vsix.format-on-save --dev
 ```
 
 Run it where you want the dependency. It installs `./suede.vsix.format-on-save`, stages it, and prints

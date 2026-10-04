@@ -10,6 +10,9 @@
     "vscode": "^1.88.0"
   },
   "main": "./extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
   "activationEvents": [
     "onStartupFinished"
   ],

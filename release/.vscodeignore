@@ -1,0 +1,6 @@
+install.mjs
+.gitignore
+**/.gitrepo
+.github/**
+.suede/**
+*.vsix
