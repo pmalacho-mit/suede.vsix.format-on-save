@@ -1,8 +1,9 @@
 // Package and install into whichever editor's command line is on the path.
 import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const here = path.dirname(new URL(import.meta.url).pathname);
+const here = path.dirname(fileURLToPath(import.meta.url));
 const vsix = path.join(here, "format-on-save.vsix");
 
 execFileSync(
