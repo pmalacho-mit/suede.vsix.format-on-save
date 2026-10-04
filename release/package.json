@@ -1,0 +1,25 @@
+{
+  "name": "format-on-save",
+  "displayName": "Format on Save (from the command line)",
+  "description": "Lets a command line have the editor format a file by saving it, as format-on-save is configured, and ask whether a file is open or has unsaved changes.",
+  "version": "0.0.1",
+  "publisher": "pmalacho-mit",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.88.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Saves files in the workspace when asked to over a local socket."
+    }
+  },
+  "scripts": {
+    "install-extension": "node install.mjs"
+  }
+}
