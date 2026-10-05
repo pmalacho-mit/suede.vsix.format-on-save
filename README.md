@@ -248,8 +248,10 @@ but stays locked until its save lands.
   it is always `stale`.
 - For a file open in a tab, the save lands in its undo history: undo steps back
   through the formatting, then through the edits that left the text as it was.
-- Two windows with the same folder open: the one that started last answers.
-  Once it closes, neither does until the other is reloaded.
+- Two windows with the same folder open (say, a file moved into a new window):
+  the one that started last answers. When it closes, a window still holding
+  the folder takes over at once; when it dies, the next command finds its
+  socket dead, removes it, and the other window takes over then.
 - A formatter that fails leaves the file saved unformatted, as a save from the
   keyboard would; `changed` is then `false`.
 - Each file goes through a full save in the editor. A file that was not open

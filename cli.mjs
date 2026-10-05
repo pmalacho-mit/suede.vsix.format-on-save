@@ -70,6 +70,34 @@ const ask = (socket, route, files) =>
     request.end(JSON.stringify({ files }));
   });
 
+/** Resolves once `socket` exists, or with false after `within` milliseconds. */
+async function appears(socket, within) {
+  for (const deadline = Date.now() + within; Date.now() < deadline; ) {
+    if (fs.existsSync(socket)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return false;
+}
+
+/**
+ * Ask the window that answers on `socket`. A socket nothing answers on was left
+ * by a window that died: removing it lets a window still holding the folder
+ * take it back (each watches for that), and the question goes to that one.
+ */
+async function reach(socket, route, files) {
+  try {
+    return await ask(socket, route, files);
+  } catch (error) {
+    if (error.code !== "ECONNREFUSED" && error.code !== "ENOENT") throw error;
+    if (error.code === "ECONNREFUSED") fs.rmSync(socket, { force: true });
+    if (!(await appears(socket, 1000)))
+      throw new Error(
+        "the editor window that had this folder open is gone, and no other has it open",
+      );
+    return ask(socket, route, files);
+  }
+}
+
 const USAGE =
   "usage: cli.mjs status|format [--exclude <glob>]… <file or glob>…\n       cli.mjs window [folder]";
 const usage = (problem) => {
@@ -85,7 +113,7 @@ if (command === "window") {
   const socket = ours() && socketOf(path.join(folder, "_"));
   try {
     if (!socket) throw new Error(`no editor window has ${folder} open`);
-    const state = await ask(socket, "/window", []);
+    const state = await reach(socket, "/window", []);
     console.log(JSON.stringify(state, null, 2));
     process.exit(state.focused ? 0 : 1);
   } catch (error) {
@@ -185,14 +213,14 @@ for (const slot of slots.filter((s) => !s.result)) {
 }
 for (const [socket, group] of bySocket) {
   try {
-    const answers = await ask(
+    const answers = await reach(
       socket,
       `/${command}`,
       group.map((slot) => slot.file),
     );
     group.forEach((slot, i) => (slot.result = answers[i]));
   } catch (error) {
-    // a socket left behind by a window that is gone
+    // no window holds the folder any more
     for (const slot of group)
       slot.result = {
         file: slot.file,
