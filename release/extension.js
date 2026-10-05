@@ -339,21 +339,68 @@ async function handle(request, response) {
   );
 }
 
+/**
+ * Listen on `socket` for as long as the returned disposable lives.
+ *
+ * The newest window on a folder takes its socket. When that window closes, it
+ * removes the socket, and a window still holding the folder takes it back. A
+ * window that dies leaves a socket nothing answers on: the command line removes
+ * that one when it finds it, and the same happens.
+ */
 function serve(socket) {
-  const server = http.createServer(handle);
+  let server;
   let inode;
-  server.on("error", (error) =>
-    console.error(
-      `format-on-save: cannot listen on ${socket}: ${error.message}`,
-    ),
-  );
-  fs.rmSync(socket, { force: true }); // a window that closed without cleaning up, or this folder in another window
-  server.listen(socket, () => {
-    fs.chmodSync(socket, 0o600);
-    inode = fs.statSync(socket).ino;
+  let disposed = false;
+
+  /**
+   * Listen on the socket: replacing whatever is there if `replace`, else only
+   * if nothing is. A server listens on a path of its own first, and the socket
+   * is moved into place, because closing a server removes the file at the path
+   * it listened on, which by then may be another window's socket.
+   */
+  const listen = (replace) => {
+    const own = `${socket}.${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
+    const next = http.createServer(handle);
+    next.on("error", (error) =>
+      console.error(
+        `format-on-save: cannot listen on ${socket}: ${error.message}`,
+      ),
+    );
+    next.listen(own, () => {
+      if (disposed) return next.close(); // the window closed while this was starting
+      try {
+        fs.chmodSync(own, 0o600);
+        if (replace) fs.renameSync(own, socket);
+        else {
+          fs.linkSync(own, socket); // fails if another window took it back first
+          fs.rmSync(own);
+        }
+      } catch {
+        return next.close();
+      }
+      inode = fs.statSync(socket).ino;
+      const previous = server;
+      server = next;
+      previous?.close();
+    });
+  };
+
+  /** Take the socket back once it is gone, whoever removed it. */
+  const reclaim = () => {
+    if (!disposed && !fs.existsSync(socket)) listen(false);
+  };
+
+  // a window that closed without cleaning up, or this folder in another window
+  listen(true);
+  const watcher = fs.watch(SOCKETS, (_event, name) => {
+    if (name === path.basename(socket)) reclaim();
   });
+  watcher.on("error", () => {});
+
   return new vscode.Disposable(() => {
-    server.close();
+    disposed = true;
+    watcher.close();
+    server?.close();
     // only if it is still ours: a window opened on the same folder since has put its own there
     try {
       if (fs.statSync(socket).ino === inode) fs.rmSync(socket);
