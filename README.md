@@ -27,6 +27,7 @@ packaging fetches `@vscode/vsce` with `npx`. Run it again after a change.
 ```sh
 node cli.mjs status <file or glob…>    # is each open in a tab, does it have unsaved changes, does it format on save
 node cli.mjs format <file or glob…>    # save each through the editor, so format-on-save runs as configured
+node cli.mjs format --last-commit      # the same, for every file the last commit touched
 node cli.mjs window [folder]           # is the editor's window in front
 ```
 
@@ -56,6 +57,48 @@ Both lists are of the current folder down, relative to it, so run it from the
 repository's root to cover all of it, or from a subfolder for just that. The
 `grep` keeps the languages that format on save; widen it to taste. With
 nothing changed, `xargs -r` runs nothing.
+
+### What a commit touched
+
+When the changes are already committed — an agent's, say — name the commit
+instead of the files:
+
+```sh
+node cli.mjs format --last-commit                      # the files the last commit (HEAD) added or modified
+node cli.mjs format --commit HEAD                      # the same, spelled out
+node cli.mjs format --commit a1b2c3d                   # those of another commit, by its hash
+node cli.mjs format --commit HEAD~1                    # those of the commit before the last
+node cli.mjs format --commit HEAD~3..HEAD              # those of the last three commits together
+node cli.mjs format --commit HEAD~3..                  # the same: a range with no end ends at HEAD
+node cli.mjs format --commit main..HEAD                # those of a branch's commits not on main
+node cli.mjs format --commit main...HEAD               # what the branch changed since it left main
+node cli.mjs format --commit HEAD --commit a1b2c3d     # two commits' files, each file once
+node cli.mjs format --last-commit src/extra.ts         # with other files too
+node cli.mjs format --last-commit --exclude '**/*.md'  # leaving some out
+node cli.mjs status --last-commit                      # status rather than format, the same way
+```
+
+`--commit` takes anything git accepts as a commit: a hash (or its first few
+characters), a branch or tag, `HEAD`. `HEAD~n` is the commit `n` before
+`HEAD`, following first parents, so `HEAD~1` is the one before the last.
+
+`A..B` is a range: the files that differ between commit `A` and commit `B`,
+as `git diff A B` lists them. `HEAD~3..HEAD` compares the tree three commits
+back with the current one, so it covers what the last three commits changed,
+together. Either end can be left out to mean `HEAD`, so `HEAD~3..` is the same.
+Being a comparison of two ends, a range leaves out a file that one of its
+commits changed and a later one changed back. `A...B`, with three dots,
+compares `B` with the commit where it and `A` parted, so `main...HEAD` is what
+your branch has changed, whatever `main` has done since.
+
+`--last-commit` is `--commit HEAD`. Either can be given more than once, and
+with files and globs too. Paths are the whole repository's, wherever in it you
+run it from. A merge counts against its first parent, so it names what it
+brought in. Files deleted since, or binary, are left out; `--exclude` leaves
+out more. A file that does not format on save is skipped as ever, so a commit
+that touched a README makes the exit code `3`. Formatting a committed file
+leaves the change uncommitted: look at it with `git diff`, and commit it or
+amend.
 
 ### A batch at once
 
