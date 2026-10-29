@@ -6,7 +6,7 @@
 [subrepo]
 	remote = https://github.com/pmalacho-mit/suede.vsix.format-on-save
 	branch = release
-	commit = c8d1a4b0e8eb5ac90a3537a923796726f2244897
-	parent = 09c0158904b3525e10845dad0a9822ff1d6fe088
+	commit = 4a7d1ef914966944b3508367abbfa7188d72d6d7
+	parent = d59988dac5915b4f8d208b6063eb58b5684dfa2f
 	method = merge
 	cmdver = 0.4.9
