@@ -3,6 +3,8 @@
 //
 //   node cli.mjs status <file or glob…>   is each open in a tab, does it have unsaved changes, does it format on save
 //   node cli.mjs format <file or glob…>   save each through the editor, so format-on-save runs as configured
+//   node cli.mjs format --last-commit     the same, for the files the last commit touched (`--commit <rev>` for
+//                                         another, or a range `A..B`), less those deleted or binary since
 //   node cli.mjs window [folder]          is the editor's window in front: { focused, active }; exits 0 when it
 //                                         is focused, 1 when not (a browser tab behind is throttled), 2 with no editor
 //
@@ -11,6 +13,7 @@
 // order given, and for `format` a summary on stderr. Exits 0 when every file is fine, 3 when some
 // were only skipped (`skipped: true`: "unsaved-changes", "format-on-save-off"), 1 when one failed
 // (`error` says why), 2 when no editor window has a file's folder open, and 64 for a usage error.
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -99,7 +102,7 @@ async function reach(socket, route, files) {
 }
 
 const USAGE =
-  "usage: cli.mjs status|format [--exclude <glob>]… <file or glob>…\n       cli.mjs window [folder]";
+  "usage: cli.mjs status|format [--exclude <glob>]… [--commit <rev or A..B>]… [--last-commit] <file or glob>…\n       cli.mjs window [folder]";
 const usage = (problem) => {
   console.error(problem ? `${problem}\n${USAGE}` : USAGE);
   process.exit(64);
@@ -131,6 +134,7 @@ if (command === "window") {
 if (!["status", "format"].includes(command)) usage();
 const inputs = [];
 const exclude = ["**/node_modules/**"];
+const commits = [];
 for (let i = 0; i < rest.length; i++) {
   if (rest[i] === "--") {
     inputs.push(...rest.slice(i + 1));
@@ -141,9 +145,68 @@ for (let i = 0; i < rest.length; i++) {
     exclude.push(rest[++i]);
   } else if (rest[i].startsWith("--exclude="))
     exclude.push(rest[i].slice("--exclude=".length));
+  else if (rest[i] === "--commit") {
+    if (i + 1 === rest.length) usage("--commit needs a commit or a range");
+    commits.push(rest[++i]);
+  } else if (rest[i].startsWith("--commit="))
+    commits.push(rest[i].slice("--commit=".length));
+  else if (rest[i] === "--last-commit") commits.push("HEAD");
   else inputs.push(rest[i]);
 }
-if (!inputs.length) usage();
+if (!inputs.length && !commits.length) usage();
+
+const git = (...args) => {
+  try {
+    return execFileSync("git", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch (error) {
+    usage(String(error.stderr || error.message).trim());
+  }
+};
+
+/**
+ * The text files a commit (or a range `A..B`) added or modified, absolute, that are still there. A
+ * merge counts against its first parent, so it names what it brought in. Binary files are left out,
+ * since the editor cannot open them as text.
+ */
+function touchedBy(rev) {
+  const root = git("rev-parse", "--show-toplevel").trim();
+  const numstat = rev.includes("..")
+    ? git(
+        "diff",
+        "--numstat",
+        "-z",
+        "--no-renames",
+        "--diff-filter=d",
+        rev,
+        "--",
+      )
+    : git(
+        "diff-tree",
+        "-r",
+        "--root",
+        "-m",
+        "--first-parent",
+        "--no-commit-id",
+        "--numstat",
+        "-z",
+        "--no-renames",
+        "--diff-filter=d",
+        rev,
+        "--",
+      );
+  // with -z and no renames: "added\tdeleted\tpath\0"; a binary file counts "-\t-"
+  return numstat
+    .split("\0")
+    .filter(Boolean)
+    .map((line) => line.split("\t"))
+    .filter(([added]) => added !== "-")
+    .map(([, , file]) => path.join(root, file))
+    .filter((file) => fs.existsSync(file));
+}
 
 // `**` does not reach into a dot-directory (.github/…), so a `**/…` exclude is tried on each tail of the path too
 const excluded = (file) => {
@@ -161,6 +224,12 @@ const excluded = (file) => {
 const slots = [];
 const seen = new Set();
 const GLOB = /[*?[\]{}]/;
+for (const rev of commits)
+  for (const file of touchedBy(rev)) {
+    if (seen.has(file) || excluded(file)) continue;
+    seen.add(file);
+    slots.push({ file });
+  }
 for (const input of inputs) {
   let matches = [path.resolve(input)];
   // a file named like a glob (Next.js's `[id].tsx`) is that file
